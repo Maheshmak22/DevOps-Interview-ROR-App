@@ -45,9 +45,9 @@ DevOps-Interview-ROR-App/
    git checkout ecs-deployment
    
 Terraform Deploy:
-cd terraform
-terraform init
-terraform apply 
+ cd terraform
+ terraform init
+ terraform apply 
 
 GitHub Actions CI/CD:
 
