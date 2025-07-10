@@ -1,0 +1,76 @@
+provider "aws" {
+  region = var.region
+}
+
+# Create S3 Bucket
+resource "aws_s3_bucket" "app_bucket" {
+  bucket        = "${var.project_name}-bucket"
+  force_destroy = true
+}
+
+# IAM Role for ECS Task to access S3
+resource "aws_iam_role" "ecs_exec" {
+  name = "ecsTaskExecutionRole"
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17",
+    Statement = [{
+      Effect = "Allow",
+      Principal = { Service = "ecs-tasks.amazonaws.com" },
+      Action = "sts:AssumeRole"
+    }]
+  })
+}
+
+# Attach S3 and ECS Task policies
+resource "aws_iam_role_policy_attachment" "ecs_exec_policy" {
+  role       = aws_iam_role.ecs_exec.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
+}
+
+resource "aws_iam_role_policy" "s3_access" {
+  name = "s3-access"
+  role = aws_iam_role.ecs_exec.id
+  policy = jsonencode({
+    Version = "2012-10-17",
+    Statement = [{
+      Effect = "Allow",
+      Action = ["s3:*"],
+      Resource = [
+        "arn:aws:s3:::${aws_s3_bucket.app_bucket.id}",
+        "arn:aws:s3:::${aws_s3_bucket.app_bucket.id}/*"
+      ]
+    }]
+  })
+}
+
+# ECS Cluster
+resource "aws_ecs_cluster" "app_cluster" {
+  name = "${var.project_name}-cluster"
+}
+
+# ECS Task Definition
+resource "aws_ecs_task_definition" "app" {
+  family                   = "${var.project_name}-task"
+  requires_compatibilities = ["FARGATE"]
+  network_mode             = "awsvpc"
+  cpu                      = "512"
+  memory                   = "1024"
+  execution_role_arn       = aws_iam_role.ecs_exec.arn
+
+  container_definitions = jsonencode([
+    {
+      name      = "rails-app",
+      image     = "<your_account_id>.dkr.ecr.ap-south-1.amazonaws.com/rails_app:latest",
+      portMappings = [{ containerPort = 3000 }],
+      environment = [
+        { name = "DB_HOST", value = aws_db_instance.postgres.address },
+        { name = "DB_NAME", value = "railsdb" },
+        { name = "DB_USERNAME", value = "postgres" },
+        { name = "DB_PASSWORD", value = var.db_password },
+        { name = "S3_BUCKET_NAME", value = aws_s3_bucket.app_bucket.bucket }
+      ]
+    }
+  ])
+}
+
+# ALB, Target Group, Listener, ECS Service also defined here (see full main.tf)
